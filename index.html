@@ -1,0 +1,426 @@
+<script type="text/javascript">
+  var gk_isXlsx = false;
+  var gk_xlsxFileLookup = {};
+  var gk_fileData = {};
+  function filledCell(cell) {
+    return cell !== "" && cell != null;
+  }
+  function loadFileData(filename) {
+    if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+      try {
+        var workbook = XLSX.read(gk_fileData[filename], { type: "base64" });
+        var firstSheetName = workbook.SheetNames[0];
+        var worksheet = workbook.Sheets[firstSheetName];
+
+        // Convert sheet to JSON to filter blank rows
+        var jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          blankrows: false,
+          defval: "",
+        });
+        // Filter out blank rows (rows where all cells are empty, null, or undefined)
+        var filteredData = jsonData.filter((row) => row.some(filledCell));
+
+        // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+        var headerRowIndex = filteredData.findIndex(
+          (row, index) =>
+            row.filter(filledCell).length >=
+            filteredData[index + 1]?.filter(filledCell).length
+        );
+        // Fallback
+        if (headerRowIndex === -1 || headerRowIndex > 25) {
+          headerRowIndex = 0;
+        }
+
+        // Convert filtered JSON back to CSV
+        var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+        csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+        return csv;
+      } catch (e) {
+        console.error(e);
+        return "";
+      }
+    }
+    return gk_fileData[filename] || "";
+  }
+</script>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Production Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      #footer {
+        text-align: center;
+        margin-top: 20px;
+        padding: 10px;
+        background-color: hsl(80, 13%, 95%);
+        border-top: 1px solid #ccc;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-5xl w-full bg-white rounded-xl shadow-lg p-8">
+      <a
+        href="https://samantha-web.github.io/navigationhub/"
+        class="inline-block bg-green-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-green-700 transition duration-300"
+        >Back to Home</a
+      >
+
+      <h1 class="text-3xl font-bold text-gray-800 mb-8 text-center">
+        Production Calculator T4(Alloy)
+      </h1>
+
+      <!-- Input Form -->
+      <div class="mb-8">
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">
+          Input Parameters
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label
+              for="orderQty"
+              class="block text-sm font-medium text-gray-600"
+              >Order Quantity</label
+            >
+            <input
+              type="number"
+              id="orderQty"
+              class="mt-1 w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+              value="0"
+            />
+          </div>
+          <div>
+            <label for="loadQty" class="block text-sm font-medium text-gray-600"
+              >Loading Qty per Rack</label
+            >
+            <input
+              type="number"
+              id="loadQty"
+              class="mt-1 w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+              value="88"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-600"
+              >Number of Racks</label
+            >
+            <div
+              id="numRacks"
+              class="mt-1 w-full border border-gray-300 rounded-md p-2 bg-gray-100 text-gray-700"
+            >
+              11
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Days to Complete Table -->
+      <div class="mb-8">
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">
+          Production Timeline
+        </h2>
+        <table class="min-w-full border-collapse border border-gray-200">
+          <thead>
+            <tr class="bg-gray-100">
+              <th
+                class="border px-4 py-3 text-sm font-medium text-gray-600"
+                rowspan="2"
+              ></th>
+              <th class="border px-4 py-3 text-sm font-medium text-gray-600">
+                8 Hours/Day
+              </th>
+              <th class="border px-4 py-3 text-sm font-medium text-gray-600">
+                10 Hours/Day
+              </th>
+              <th class="border px-4 py-3 text-sm font-medium text-gray-600">
+                12 Hours/Day
+              </th>
+              <th class="border px-4 py-3 text-sm font-medium text-gray-600">
+                14 Hours/Day
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="border px-4 py-3 text-sm font-medium text-gray-600">
+                Days to Complete
+              </td>
+              <td class="border px-4 py-3 text-center" id="days8">2.8</td>
+              <td class="border px-4 py-3 text-center" id="days10">2.3</td>
+              <td class="border px-4 py-3 text-center" id="days12">1.9</td>
+              <td class="border px-4 py-3 text-center" id="days14">1.6</td>
+            </tr>
+            <tr>
+              <td class="border px-4 py-3 text-sm font-medium text-gray-600">
+                Working Hours per Day
+              </td>
+              <td class="border px-4 py-3" colspan="4">
+                <select
+                  id="workingHours"
+                  class="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+                  onchange="calculate()"
+                >
+                  <option value="08">08 Hours</option>
+                  <option value="10">10 Hours</option>
+                  <option value="12">12 Hours</option>
+                  <option value="14">14 Hours</option>
+                  <option value="16">16 Hours</option>
+                  <option value="18">18 Hours</option>
+                  <option value="20">20 Hours</option>
+                  <option value="22">22 Hours</option>
+                  <option value="24">24 Hours</option>
+                </select>
+              </td>
+            </tr>
+            <tr>
+              <td class="border px-4 py-3 text-sm font-medium text-gray-600">
+                Today (mm/dd/yyyy)
+              </td>
+              <td class="border px-4 py-3" id="today" colspan="4"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Buttons -->
+      <div class="flex justify-center gap-4">
+        <button
+          onclick="calculate()"
+          class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition"
+        >
+          Calculate
+        </button>
+        <button
+          onclick="clearData()"
+          class="bg-red-600 text-white px-6 py-2 rounded-md hover:bg-red-700 transition"
+        >
+          Clear
+        </button>
+      </div>
+
+      <!-- Schedule Table -->
+      <div class="mb-8">
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">
+          Production Schedule
+        </h2>
+        <table class="min-w-full border-collapse border border-gray-200">
+          <thead>
+            <tr class="bg-gray-100">
+              <th class="border px-4 py-3 text-sm font-medium text-gray-600">
+                Date <br />
+                (mm/dd/yyyy)
+              </th>
+              <th class="border px-4 py-3 text-sm font-medium text-gray-600">
+                Rack Number
+              </th>
+              <th class="border px-4 py-3 text-sm font-medium text-gray-600">
+                Rack In Time
+              </th>
+              <th class="border px-4 py-3 text-sm font-medium text-gray-600">
+                Rack Out Time
+              </th>
+            </tr>
+          </thead>
+          <tbody id="scheduleBody">
+            <!-- Dynamically generated rows -->
+          </tbody>
+        </table>
+      </div>
+      <hr class="my-6" />
+      <footer id="footer" class="text-sm text-gray-600">
+        Copyright Samantha 2025 © All rights reserved.<br />
+        <a
+          href="mailto:s2880882@gmail.com"
+          class="text-blue-600 hover:underline"
+        >
+          s2880882@gmail.com (Samantha)
+        </a>
+      </footer>
+    </div>
+
+    <script type="text/javascript">
+      var gk_isXlsx = false;
+      var gk_xlsxFileLookup = {};
+      var gk_fileData = {};
+      function filledCell(cell) {
+        return cell !== "" && cell != null;
+      }
+      function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+          try {
+            var workbook = XLSX.read(gk_fileData[filename], { type: "base64" });
+            var firstSheetName = workbook.SheetNames[0];
+            var worksheet = workbook.Sheets[firstSheetName];
+
+            // Convert sheet to JSON to filter blank rows
+            var jsonData = XLSX.utils.sheet_to_json(worksheet, {
+              header: 1,
+              blankrows: false,
+              defval: "",
+            });
+            // Filter out blank rows (rows where all cells are empty, null, or undefined)
+            var filteredData = jsonData.filter((row) => row.some(filledCell));
+
+            // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+            var headerRowIndex = filteredData.findIndex(
+              (row, index) =>
+                row.filter(filledCell).length >=
+                filteredData[index + 1]?.filter(filledCell).length
+            );
+            // Fallback
+            if (headerRowIndex === -1 || headerRowIndex > 25) {
+              headerRowIndex = 0;
+            }
+
+            // Convert filtered JSON back to CSV
+            var csv = XLSX.utils.aoa_to_sheet(
+              filteredData.slice(headerRowIndex)
+            );
+            csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+            return csv;
+          } catch (e) {
+            console.error(e);
+            return "";
+          }
+        }
+        return gk_fileData[filename] || "";
+      }
+
+      function calculate() {
+        const orderQty =
+          parseInt(document.getElementById("orderQty").value) || 0;
+        const loadQty =
+          parseInt(document.getElementById("loadQty").value) || 88;
+        const numRacks = Math.ceil(orderQty / loadQty);
+        document.getElementById("numRacks").textContent = numRacks;
+
+        const workingHours =
+          parseInt(document.getElementById("workingHours").value) || 8;
+        const racksPerDay = Math.floor(workingHours / 2); // 2 hours per rack (120 minutes)
+
+        // Calculate days for different working hours
+        const days = {
+          8: numRacks / 4,
+          10: numRacks <= 4 ? numRacks / 4 : numRacks / 5,
+          12: numRacks <= 4 ? numRacks / 4 : numRacks / 6,
+          14: numRacks <= 4 ? numRacks / 4 : numRacks / 7,
+          16: numRacks / 8,
+          18: numRacks / 9,
+          20: numRacks / 10,
+          22: numRacks / 11,
+          24: numRacks / 12,
+        };
+        document.getElementById("days8").textContent = days[8].toFixed(1);
+        document.getElementById("days10").textContent = days[10].toFixed(1);
+        document.getElementById("days12").textContent = days[12].toFixed(1);
+        document.getElementById("days14").textContent = days[14].toFixed(1);
+
+        updateSchedule(numRacks, workingHours, racksPerDay);
+      }
+
+      function updateSchedule(numRacks, workingHours, racksPerDay) {
+        const scheduleBody = document.getElementById("scheduleBody");
+        scheduleBody.innerHTML = ""; // Clear existing rows
+
+        const rackIn1 = document.getElementById("rackIn1")?.value || "06:00";
+        let [hours, minutes] = rackIn1.split(":").map(Number);
+        let currentTime = new Date();
+        currentTime.setHours(hours, minutes, 0, 0);
+        let currentDate = new Date();
+        let rackCount = 1;
+        let racksToday = 0;
+        let dayIndex = 0;
+
+        // Define background colors for different days
+        const dayColors = [
+          "bg-blue-100",
+          "bg-green-100",
+          "bg-yellow-100",
+          "bg-pink-100",
+          "bg-purple-100",
+          "bg-teal-100",
+        ];
+
+        const dateOptions = {
+          month: "numeric",
+          day: "numeric",
+          year: "numeric",
+        };
+        const timeOptions = {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        };
+
+        for (let i = 1; i <= numRacks; i++) {
+          if (racksToday >= racksPerDay) {
+            // Start a new day
+            currentDate.setDate(currentDate.getDate() + 1);
+            rackCount = 1;
+            racksToday = 0;
+            dayIndex = (dayIndex + 1) % dayColors.length; // Cycle through colors
+            currentTime = new Date();
+            currentTime.setHours(hours, minutes, 0, 0); // Reset to user-inputted start time
+          }
+
+          const row = document.createElement("tr");
+          const duration = rackCount === 1 ? 210 : 120; // First rack of each day 210 min, others 120 min
+          const rackOutTime = new Date(
+            currentTime.getTime() + duration * 60000
+          );
+
+          row.innerHTML = `
+                    <td class="border px-4 py-3 ${
+                      dayColors[dayIndex]
+                    }">${currentDate.toLocaleDateString(
+            "en-US",
+            dateOptions
+          )}</td>
+                    <td class="border px-4 py-3 text-center">${rackCount}</td>
+                    <td class="border px-4 py-3">
+                        ${
+                          i === 1
+                            ? `<input type="time" class="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500" id="rackIn1" value="${rackIn1}" onchange="calculate()" />`
+                            : `<span id="rackIn${i}">${currentTime.toLocaleTimeString(
+                                "en-US",
+                                timeOptions
+                              )}</span>`
+                        }
+                    </td>
+                    <td class="border px-4 py-3 text-center" id="rackOut${i}">${rackOutTime.toLocaleTimeString(
+            "en-US",
+            timeOptions
+          )}</td>
+                `;
+          scheduleBody.appendChild(row);
+
+          // Update for next rack
+          currentTime = new Date(rackOutTime.getTime());
+          rackCount++;
+          racksToday++;
+        }
+
+        // Update today's date
+        document.getElementById("today").textContent =
+          new Date().toLocaleDateString("en-US", dateOptions);
+      }
+
+      function clearData() {
+        document.getElementById("orderQty").value = "0";
+        document.getElementById("loadQty").value = "88";
+        document.getElementById("workingHours").value = "8";
+        const rackIn1 = document.getElementById("rackIn1");
+        if (rackIn1) rackIn1.value = "06:00";
+        calculate();
+      }
+
+      // Initialize
+      document.getElementById("today").textContent =
+        new Date().toLocaleDateString("en-US");
+      calculate();
+    </script>
+  </body>
+</html>
