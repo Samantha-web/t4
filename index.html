@@ -1,49 +1,3 @@
-<script type="text/javascript">
-  var gk_isXlsx = false;
-  var gk_xlsxFileLookup = {};
-  var gk_fileData = {};
-  function filledCell(cell) {
-    return cell !== "" && cell != null;
-  }
-  function loadFileData(filename) {
-    if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-      try {
-        var workbook = XLSX.read(gk_fileData[filename], { type: "base64" });
-        var firstSheetName = workbook.SheetNames[0];
-        var worksheet = workbook.Sheets[firstSheetName];
-
-        // Convert sheet to JSON to filter blank rows
-        var jsonData = XLSX.utils.sheet_to_json(worksheet, {
-          header: 1,
-          blankrows: false,
-          defval: "",
-        });
-        // Filter out blank rows (rows where all cells are empty, null, or undefined)
-        var filteredData = jsonData.filter((row) => row.some(filledCell));
-
-        // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-        var headerRowIndex = filteredData.findIndex(
-          (row, index) =>
-            row.filter(filledCell).length >=
-            filteredData[index + 1]?.filter(filledCell).length
-        );
-        // Fallback
-        if (headerRowIndex === -1 || headerRowIndex > 25) {
-          headerRowIndex = 0;
-        }
-
-        // Convert filtered JSON back to CSV
-        var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-        csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-        return csv;
-      } catch (e) {
-        console.error(e);
-        return "";
-      }
-    }
-    return gk_fileData[filename] || "";
-  }
-</script>
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -222,11 +176,28 @@
               <th class="border px-4 py-3 text-sm font-medium text-gray-600">
                 Rack Out Time
               </th>
+              <th class="border px-4 py-3 text-sm font-medium text-gray-600">
+                LPG Gas (kg)
+              </th>
             </tr>
           </thead>
           <tbody id="scheduleBody">
             <!-- Dynamically generated rows -->
           </tbody>
+          <tfoot>
+            <tr class="bg-gray-50">
+              <td class="border px-4 py-3 text-sm font-medium text-gray-600" colspan="4">
+                Total LPG Gas Requirement
+              </td>
+              <td class="border px-4 py-3 text-center" id="totalLpg"></td>
+            </tr>
+            <tr class="bg-gray-50">
+              <td class="border px-4 py-3 text-sm font-medium text-gray-600" colspan="4">
+                Number of LPG Bottles (450 kg each)
+              </td>
+              <td class="border px-4 py-3 text-center" id="numBottles"></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
       <hr class="my-6" />
@@ -333,6 +304,10 @@
         let rackCount = 1;
         let racksToday = 0;
         let dayIndex = 0;
+        let totalLpg = 0;
+
+        // LPG gas calculation: 14.28571429 kg per 60 minutes
+        const lpgPerMinute = 14.28571429 / 60;
 
         // Define background colors for different days
         const dayColors = [
@@ -366,12 +341,15 @@
             currentTime.setHours(hours, minutes, 0, 0); // Reset to user-inputted start time
           }
 
-          const row = document.createElement("tr");
           const duration = rackCount === 1 ? 210 : 120; // First rack of each day 210 min, others 120 min
           const rackOutTime = new Date(
             currentTime.getTime() + duration * 60000
           );
+          const lpgForRack = (lpgPerMinute * duration).toFixed(2);
 
+          totalLpg += parseFloat(lpgForRack);
+
+          const row = document.createElement("tr");
           row.innerHTML = `
                     <td class="border px-4 py-3 ${
                       dayColors[dayIndex]
@@ -394,6 +372,7 @@
             "en-US",
             timeOptions
           )}</td>
+                    <td class="border px-4 py-3 text-center">${lpgForRack}</td>
                 `;
           scheduleBody.appendChild(row);
 
@@ -402,6 +381,12 @@
           rackCount++;
           racksToday++;
         }
+
+        // Update total LPG and number of bottles
+        document.getElementById("totalLpg").textContent = totalLpg.toFixed(2);
+        document.getElementById("numBottles").textContent = Math.ceil(
+          totalLpg / 450
+        );
 
         // Update today's date
         document.getElementById("today").textContent =
